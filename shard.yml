@@ -1,0 +1,9 @@
+name: jack2js
+version: 0.1.0
+
+authors:
+  - Jens Berlips <jens@berlips.com>
+
+crystal: 0.27.2
+
+license: MIT
