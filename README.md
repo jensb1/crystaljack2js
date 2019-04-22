@@ -1,30 +1,16 @@
 # jack2cr
 
-TODO: Write a description here
 
 ## Installation
 
-1. Add the dependency to your `shard.yml`:
-
-   ```yaml
-   dependencies:
-     jack2cr:
-       github: your-github-user/jack2cr
-   ```
-
-2. Run `shards install`
+TBW
 
 ## Usage
 
-```crystal
-require "jack2cr"
-```
 
 TODO: Write usage instructions here
 
 ## Development
-
-```bin/c2cr -I/usr/local/include/jack jack.h```
 
 TODO: Write development instructions here
 
@@ -38,4 +24,4 @@ TODO: Write development instructions here
 
 ## Contributors
 
-- [Jens](https://github.com/your-github-user) - creator and maintainer
+- [Jens Berlips](https://github.com/jensb1) - creator and maintainer
