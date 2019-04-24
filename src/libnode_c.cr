@@ -10,6 +10,7 @@ lib Node_c
   type NapiEscapableHandleScope = Void*
   type NapiCallbackInfo = Void*
   type NapiDeferred = Void*
+
   enum NapiPropertyAttributes : LibC::UInt
     NapiDefault      =    0
     NapiWritable     =    1
@@ -42,6 +43,10 @@ lib Node_c
     NapiBigint64Array     =  9
     NapiBiguint64Array    = 10
   end
+  enum NapiThreadsafeFunctionCallMode : LibC::UInt
+    NapiTsfnNonblocking = 0
+    NapiTsfnBlocking    = 1
+  end
   enum NapiStatus : LibC::UInt
     NapiOk                    =  0
     NapiInvalidArg            =  1
@@ -63,6 +68,12 @@ lib Node_c
     NapiBigintExpected        = 17
     NapiDateExpected          = 18
   end
+
+  enum NapiThreadsafeFunctionReleaseMode
+    NapiTsfnRelease = 0
+    NapiTsfnAbort   = 1
+  end
+
   alias NapiCallback = (NapiEnv, NapiCallbackInfo) -> NapiValue
   alias NapiFinalize = (NapiEnv, Void*, Void*) -> Void
 
@@ -187,6 +198,9 @@ lib Node_c
 
   type NapiAsyncWork = Void*
 
+  type NapiThreadsafeFunctionCallJs = (NapiEnv, NapiValue, Void*) -> Void
+  type NapiThreadsafeFunction = Void*
+
   alias NapiAsyncExecuteCallback = (NapiEnv, Void*) -> Void
   alias NapiAsyncCompleteCallback = (NapiEnv, NapiStatus, Void*) -> Void
 
@@ -231,11 +245,11 @@ lib Node_c
   fun napi_remove_env_cleanup_hook(NapiEnv, (Void*) -> Void*, Void*) : NapiStatus
   fun napi_open_callback_scope(NapiEnv, NapiValue, NapiAsyncContext, NapiCallbackScope*) : NapiStatus
   fun napi_close_callback_scope(NapiEnv, NapiCallbackScope) : NapiStatus
-  #  fun napi_create_threadsafe_function(NapiEnv, NapiValue, NapiValue, NapiValue, LibC::SizeT, LibC::SizeT, Void*, NapiFinalize, Void*, NapiThreadsafeFunctionCallJs, NapiThreadsafeFunction*) : NapiStatus
+  fun napi_create_threadsafe_function(NapiEnv, NapiValue, NapiValue, NapiValue, LibC::SizeT, LibC::SizeT, Void*, NapiFinalize, Void*, NapiThreadsafeFunctionCallJs, NapiThreadsafeFunction*) : NapiStatus
   # fun napi_get_threadsafe_function_context(NapiThreadsafeFunction, Void**) : NapiStatus
-  # fun napi_call_threadsafe_function(NapiThreadsafeFunction, Void*, NapiThreadsafeFunctionCallMode) : NapiStatus
-  # fun napi_acquire_threadsafe_function(NapiThreadsafeFunction) : NapiStatus
-  # fun napi_release_threadsafe_function(NapiThreadsafeFunction, NapiThreadsafeFunctionReleaseMode) : NapiStatus
+  fun napi_call_threadsafe_function(NapiThreadsafeFunction, Void*, NapiThreadsafeFunctionCallMode) : NapiStatus
+  fun napi_acquire_threadsafe_function(NapiThreadsafeFunction) : NapiStatus
+  fun napi_release_threadsafe_function(NapiThreadsafeFunction, NapiThreadsafeFunctionReleaseMode) : NapiStatus
   # fun napi_unref_threadsafe_function(NapiEnv, NapiThreadsafeFunction) : NapiStatus
   # fun napi_ref_threadsafe_function(NapiEnv, NapiThreadsafeFunction) : NapiStatus
 end

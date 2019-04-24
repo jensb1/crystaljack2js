@@ -65,7 +65,3 @@ fun crystal_library_init(argc : Int32, argv : UInt8**) : Int32
   Node::Jack2.setup
   0
 end
-# fun main = crystal_library_init(argc : Int32, argv : UInt8**) : Int32
-#  puts "INIT2 "
-#  Crystal.main(argc, argv)
-# end
