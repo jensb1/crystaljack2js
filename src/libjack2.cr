@@ -4,11 +4,20 @@ require "./libjack2_c"
 module Jack2
   VERSION = "0.1.0"
 
+  class OutputFrame
+    getter :nframes, :out1, :out2
+    setter :nframes, :out1, :out2
+
+    def initialize(@nframes : Int32 = 0, @out1 : Float32* = Pointer(Float32).null, @out2 : Float32* = Pointer(Float32).null)
+    end
+  end
+
   class Client
     PORT_OUTPUT = Jack2_c::JackPortFlags::JackPortIsOutput
 
     @@closure_callback : Pointer(Void)?
     @ports = {} of String => Jack2_c::JackPort*
+    @@frame = OutputFrame.new
 
     @time = 0
 
@@ -37,19 +46,12 @@ module Jack2
       @ports[name] = port
     end
 
-    def process(nframes, &block : (Jack2_c::JackNframesT, Float32*, Float32* -> Void))
-      puts "Time: #{@time}"
+    def process(nframes, &block : (OutputFrame -> Void))
+      @@frame.nframes = nframes
+      @@frame.out1 = Jack2_c.jack_port_get_buffer(@ports["out1"], nframes).as(Float32*)
+      @@frame.out2 = Jack2_c.jack_port_get_buffer(@ports["out2"], nframes).as(Float32*)
 
-      out1 = Jack2_c.jack_port_get_buffer(@ports["out1"], nframes).as(Float32*)
-      out2 = Jack2_c.jack_port_get_buffer(@ports["out2"], nframes).as(Float32*)
-
-      (0...nframes).each do |i|
-        out1[i] = 0.01_f32 * Math.sin((@time % 200) * 2*Math::PI/200).to_f32
-        out2[i] = 0.01_f32 * Math.sin((@time % 200) * 2*Math::PI/200).to_f32
-        @time += 1
-      end
-      block.call(nframes, out1, out2)
-
+      block.call(@@frame)
       return 0
     end
 
@@ -61,7 +63,7 @@ module Jack2
       end
     end
 
-    def register_process_callback(&block : (Jack2_c::JackNframesT, Float32*, Float32* -> Void))
+    def register_process_callback(&block : (OutputFrame -> Void))
       closure = ->(nframes : Jack2_c::JackNframesT, data : Void*) {
         process(nframes, &block)
       }

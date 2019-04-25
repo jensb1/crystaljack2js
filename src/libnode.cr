@@ -1,6 +1,17 @@
 require "./libjack2"
 require "./libnode_c"
 
+# https://github.com/nodejs/node/blob/master/src/node_api.cc
+macro assert_napiok(call)
+	%status = {{call}}
+
+	if %status != Node_c::NapiStatus::NapiOk
+		%err = napi_lasterror()
+		%ca = %({{call}})
+		raise "Call #{%ca } failed with error message: (#{%err})"
+	end
+end
+
 macro register_fn(name, fn)
 	desc = Node_c::NapiPropertyDescriptor.new
     desc.utf8name = "setup"
@@ -17,6 +28,12 @@ end
 macro napi_string(str)
   %pv = uninitialized Node_c::NapiValue
   Node_c.napi_create_string_utf8(env, {{str}}, {{str}}.size, pointerof(%pv))
+  %pv
+end
+
+macro napi_int(i)
+  %pv = uninitialized Node_c::NapiValue
+  assert_napiok(Node_c.napi_create_int64(env, {{i}}, pointerof(%pv)))
   %pv
 end
 
@@ -53,9 +70,17 @@ macro napi_lasterror
 	%error.error_message.null? ? nil : String.new(%error.error_message)
 end
 
-macro assert_napiok(call)
-	%status = {{call}}
-	raise(%({{call}} failed: {status})) if %status != Node_c::NapiStatus::NapiOk
+macro napi_typedarray(arr, length)
+	if {{arr}}.is_a?(::Pointer(Float32))
+		%size=sizeof(Float)
+	else
+		raise "COMPILER: Array type not supported: #{ {{arr}}.class }"
+	end
+    %array_buffer = uninitialized Node_c::NapiValue
+    %typed_buffer = uninitialized Node_c::NapiValue
+    assert_napiok(Node_c.napi_create_external_arraybuffer(env, {{arr}}.as(Void*), {{length}}*%size, nil, nil, pointerof(%array_buffer)))
+    assert_napiok(Node_c.napi_create_typedarray(env, Node_c::NapiTypedarrayType::NapiFloat32Array, {{length}}, %array_buffer, 0, pointerof(%typed_buffer)))
+    %typed_buffer
 end
 
 # https://github.com/nodejs/abi-stable-node-addon-examples
@@ -73,6 +98,7 @@ module Node
             client = ::Jack2::Client.new
             client.register_port("out1", ::Jack2::Client::PORT_OUTPUT)
             client.register_port("out2", ::Jack2::Client::PORT_OUTPUT)
+            puts client.ports
 
             # Get arguments
             argc = 1_u64
@@ -81,13 +107,36 @@ module Node
             raise "invalid arg, expected function" unless napi_typeof(callback_fn) == Node_c::NapiValuetype::NapiFunction
 
             threadsafe_function = uninitialized Node_c::NapiThreadsafeFunction
-            assert_napiok(Node_c.napi_create_threadsafe_function(env, callback_fn,
-              nil, napi_string("callback for jack2 process"), 20, 1, nil, nil, nil, nil, pointerof(threadsafe_function)))
 
-            # Callback definition
-            client.register_process_callback do |nframe, out1, out2|
+            # Create threadsafe function
+            call_js_cb = ->(env : Node_c::NapiEnv, cb : Node_c::NapiValue, ctx : Void*, frame : Void*) {
+              begin
+                recv = uninitialized Node_c::NapiValue
+                frame = Box(::Jack2::OutputFrame).unbox(frame)
+
+                typed_out1 = napi_typedarray(frame.out1, frame.nframes)
+                typed_out2 = napi_typedarray(frame.out2, frame.nframes)
+
+                args = uninitialized Node_c::NapiValue[3]
+                nframes = frame.nframes
+                args[0] = napi_int(nframes)
+                args[1] = typed_out1
+                args[2] = typed_out2
+
+                assert_napiok(Node_c.napi_get_undefined(env, pointerof(recv)))
+                assert_napiok(Node_c.napi_call_function(env, recv, cb, 3, args.to_unsafe, nil))
+                return # Void
+              rescue e
+                puts e.to_s
+              end
+            }
+            assert_napiok(Node_c.napi_create_threadsafe_function(env, callback_fn,
+              nil, napi_string("callback for jack2 process"), 20, 1, nil, nil, nil, call_js_cb, pointerof(threadsafe_function)))
+
+            # Callback definition (will call jack_process->jack_closure->closure below->call_js_cb->function)
+            client.register_process_callback do |frame|
               assert_napiok(Node_c.napi_acquire_threadsafe_function(threadsafe_function))
-              assert_napiok(Node_c.napi_call_threadsafe_function(threadsafe_function, nil,
+              assert_napiok(Node_c.napi_call_threadsafe_function(threadsafe_function, Box.box(frame),
                 Node_c::NapiThreadsafeFunctionCallMode::NapiTsfnBlocking))
               assert_napiok(Node_c.napi_release_threadsafe_function(threadsafe_function,
                 Node_c::NapiThreadsafeFunctionReleaseMode::NapiTsfnRelease))

@@ -9,3 +9,6 @@ struct Pointer(T)
     a
   end
 end
+
+macro log_debug(str)
+end

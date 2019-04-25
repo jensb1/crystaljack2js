@@ -198,7 +198,7 @@ lib Node_c
 
   type NapiAsyncWork = Void*
 
-  type NapiThreadsafeFunctionCallJs = (NapiEnv, NapiValue, Void*) -> Void
+  type NapiThreadsafeFunctionCallJs = (NapiEnv, NapiValue, Void*, Void*) -> Void
   type NapiThreadsafeFunction = Void*
 
   alias NapiAsyncExecuteCallback = (NapiEnv, Void*) -> Void
