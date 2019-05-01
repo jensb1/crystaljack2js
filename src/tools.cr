@@ -12,3 +12,7 @@ end
 
 macro log_debug(str)
 end
+
+macro assert(eval)
+	raise "Assert failed: {{eval}}" if {{eval}}
+end

@@ -89,16 +89,17 @@ module Node
     VERSION = "0.1.0"
 
     @@module = Node_c::NapiModule.new
+    @@client = ::Jack2::Client.new
+    @@call_js_cb : Pointer(Void)?
 
     def self.setup
       module_register_callback = ->(env : Node_c::NapiEnv, exports : Node_c::NapiValue) {
         # Avoid closure
         register_fn("setup", ->(env : Node_c::NapiEnv, info : Node_c::NapiCallbackInfo) {
           begin
-            client = ::Jack2::Client.new
-            client.register_port("out1", ::Jack2::Client::PORT_OUTPUT)
-            client.register_port("out2", ::Jack2::Client::PORT_OUTPUT)
-            puts client.ports
+            @@client.register_port("out1", ::Jack2::Client::PORT_OUTPUT)
+            @@client.register_port("out2", ::Jack2::Client::PORT_OUTPUT)
+            puts @@client.ports
 
             # Get arguments
             argc = 1_u64
@@ -110,45 +111,47 @@ module Node
 
             # Create threadsafe function
             call_js_cb = ->(env : Node_c::NapiEnv, cb : Node_c::NapiValue, ctx : Void*, frame : Void*) {
+              # This is called within a NodeJS UV Process context
               begin
+                GC.disable
                 recv = uninitialized Node_c::NapiValue
                 frame = Box(::Jack2::OutputFrame).unbox(frame)
 
-                typed_out1 = napi_typedarray(frame.out1, frame.nframes)
-                typed_out2 = napi_typedarray(frame.out2, frame.nframes)
-
-                args = uninitialized Node_c::NapiValue[3]
+                args = uninitialized Node_c::NapiValue[4]
                 nframes = frame.nframes
-                args[0] = napi_int(nframes)
-                args[1] = typed_out1
-                args[2] = typed_out2
+                args[0] = napi_int(frame.time)
+                args[1] = napi_int(frame.nframes)
+                args[2] = napi_typedarray(frame.out1, frame.nframes)
+                args[3] = napi_typedarray(frame.out2, frame.nframes)
 
                 assert_napiok(Node_c.napi_get_undefined(env, pointerof(recv)))
-                assert_napiok(Node_c.napi_call_function(env, recv, cb, 3, args.to_unsafe, nil))
+                assert_napiok(Node_c.napi_call_function(env, recv, cb, 4, args.to_unsafe, nil))
                 return # Void
               rescue e
                 puts e.to_s
+              ensure
+                GC.enable
               end
             }
+            assert(call_js_cb.closure?)
             assert_napiok(Node_c.napi_create_threadsafe_function(env, callback_fn,
               nil, napi_string("callback for jack2 process"), 20, 1, nil, nil, nil, call_js_cb, pointerof(threadsafe_function)))
 
             # Callback definition (will call jack_process->jack_closure->closure below->call_js_cb->function)
-            client.register_process_callback do |frame|
+
+            @@client.register_process_callback do |frame|
+              # This is jack_c process thread (GC is disabled already)
               assert_napiok(Node_c.napi_acquire_threadsafe_function(threadsafe_function))
               assert_napiok(Node_c.napi_call_threadsafe_function(threadsafe_function, Box.box(frame),
                 Node_c::NapiThreadsafeFunctionCallMode::NapiTsfnBlocking))
               assert_napiok(Node_c.napi_release_threadsafe_function(threadsafe_function,
                 Node_c::NapiThreadsafeFunctionReleaseMode::NapiTsfnRelease))
             end
-            client.activate
-            client.connect("testclient:out1", "Live:in1")
-            client.connect("testclient:out2", "Live:in2")
-            puts client.ports
+            @@client.activate
+            @@client.connect("testclient:out1", "Live:in1")
+            @@client.connect("testclient:out2", "Live:in2")
 
-            ports = client.ports
-
-            return napi_array(ports)
+            return napi_array(@@client.ports)
           rescue e
             napi_throw("Exception from Crystal: #{e.to_s}")
           end
